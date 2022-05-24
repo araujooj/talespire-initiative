@@ -10,10 +10,14 @@ import {
 } from '@chakra-ui/react';
 import { GetServerSideProps } from 'next';
 import Image from 'next/image';
-import { FiTrash } from 'react-icons/fi';
-import { useState } from 'react';
+import { FiClipboard, FiTrash } from 'react-icons/fi';
+import { useEffect, useState } from 'react';
+import { useRouter } from 'next/router';
+import useSWR from 'swr';
 import { api } from '../../services/api';
 import logo from '../../assets/logo.svg';
+
+const fetcher = (url: string) => api.get(url).then((res) => res.data);
 
 interface Initiative {
   id: number;
@@ -27,27 +31,35 @@ interface Initiative {
   room_id: number;
 }
 
-interface RoomProps {
-  room: {
-    apiURL: string;
-    name: string;
-    slug: string;
-    initiatives: Initiative[];
-  };
+interface RoomData {
+  apiURL: string;
+  name: string;
+  slug: string;
+  initiatives: Initiative[];
 }
 
-export default function Room({ room }: RoomProps) {
-  const [initiatives, setInitiatives] = useState<Initiative[]>(
-    room.initiatives,
-  );
+export default function Room() {
+  const [room, setRoom] = useState<RoomData>({} as RoomData);
   const [diceValue, setDiceValue] = useState('');
   const [modValue, setModValue] = useState('');
 
+  const {
+    query: { slug },
+  } = useRouter();
+
+  const { data, error } = useSWR(`/rooms/${slug}`, fetcher);
+
   const toast = useToast();
 
+  useEffect(() => {
+    if (data) {
+      setRoom(data);
+    }
+  }, [data]);
+
   const cleanList = async () => {
-    await api.delete(`/room_initiative/${room.slug}`).then((res) => {
-      setInitiatives([]);
+    await api.delete(`/room_initiative/${slug}`).then((res) => {
+      setRoom({ ...room, initiatives: [] });
       toast({
         title: 'Deleted all initiatives on the room',
         status: 'success',
@@ -57,7 +69,22 @@ export default function Room({ room }: RoomProps) {
     });
   };
 
-  const deleteInitiative = async () => {};
+  const deleteInitiative = async (id: number) => {
+    const filteredInitiatives = room.initiatives.filter(
+      (element) => element.id !== id,
+    );
+    await api
+      .delete(`initiative/${id}`)
+      .then((res) => {
+        setRoom({ ...room, initiatives: filteredInitiatives });
+      })
+      .catch((err) => toast({
+          title: 'Error on delete!',
+          status: 'error',
+          duration: 9000,
+          isClosable: true,
+        }));
+  };
 
   return (
     <Flex height="100vh" justify="center" align="center" flexDir="column">
@@ -74,8 +101,8 @@ export default function Room({ room }: RoomProps) {
           borderRadius="16px"
         >
           <VStack spacing="4">
-            {initiatives.length ? (
-              initiatives.map((initiative) => (
+            {room.initiatives?.length ? (
+              room.initiatives.map((initiative) => (
                 <Flex
                   p="2"
                   align="center"
@@ -92,6 +119,7 @@ export default function Room({ room }: RoomProps) {
                       {initiative.total}
                     </Text>
                     <Button
+                      onClick={() => deleteInitiative(initiative.id)}
                       _hover={{
                         bg: 'red.600',
                       }}
@@ -110,7 +138,7 @@ export default function Room({ room }: RoomProps) {
             )}
           </VStack>
 
-          {initiatives.length ? (
+          {room.initiatives?.length ? (
             <Flex mt="8" align="center" justify="space-between">
               <Image width="110px" height="60px" src={logo} />
               <Button
@@ -128,8 +156,17 @@ export default function Room({ room }: RoomProps) {
         </Box>
       </Flex>
       <Flex mt="4" maxW="400px" flexDir={['column', 'row']}>
-        <Input name="dice" mr="1" placeholder="Ex: 1d20" onChangeCapture={(e) => setDiceValue(e.currentTarget.value)} />
-        <Input name="bonus" placeholder="+5" onChangeCapture={(e) => setModValue(e.currentTarget.value)} />
+        <Input
+          name="dice"
+          mr="1"
+          placeholder="Ex: 1d20"
+          onChangeCapture={(e) => setDiceValue(e.currentTarget.value)}
+        />
+        <Input
+          name="bonus"
+          placeholder="+5"
+          onChangeCapture={(e) => setModValue(e.currentTarget.value)}
+        />
         <Button
           as="a"
           href={`talespire://dice/Initiative:${diceValue + modValue}`}
@@ -139,23 +176,34 @@ export default function Room({ room }: RoomProps) {
           Roll
         </Button>
       </Flex>
-      <Text mt="4" textAlign="center">
+      <Text
+        _hover={{
+          cursor: 'pointer',
+        }}
+        onClick={() => {
+          toast({
+            title: 'Copied to clipboard!',
+            status: 'success',
+            duration: 9000,
+            isClosable: true,
+          });
+          navigator.clipboard.writeText(room.apiURL);
+        }}
+        display="flex"
+        align="center"
+        mt="4"
+        textAlign="center"
+      >
         Link for plugin -
         {' '}
         {room.apiURL}
+        <FiClipboard
+          style={{
+            marginTop: '4px',
+            marginLeft: '2px',
+          }}
+        />
       </Text>
     </Flex>
   );
 }
-
-export const getServerSideProps: GetServerSideProps = async ({ params }) => {
-  const { slug } = params;
-
-  const response = await api.get(`/rooms/${slug}`);
-
-  return {
-    props: {
-      room: response.data,
-    },
-  };
-};
