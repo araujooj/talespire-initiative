@@ -9,7 +9,7 @@ import logo from '../../assets/logo.svg';
 import { Input } from '../../components/Form/Input';
 import { api } from '../../services/api';
 
-export function Landing() {
+export default function Landing() {
   const [loading, setLoading] = useState(false);
   const [name, setName] = useState('');
   const [error, setError] = useState(false);
